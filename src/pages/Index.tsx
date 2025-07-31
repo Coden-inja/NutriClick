@@ -1,4 +1,4 @@
-import { CalorieApp } from "@/components/CalorieApp";
+import { CalorieApp } from "@/components/CalorieAppEnhanced";
 
 const Index = () => {
   return <CalorieApp />;
