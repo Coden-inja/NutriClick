@@ -27,73 +27,105 @@ export function CalorieApp() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const uploadToImgbb = async (file: File): Promise<string> => {
+    console.log('Starting image upload to ImgBB...', file.name, file.size);
     const formData = new FormData();
     formData.append('image', file);
 
-    const response = await fetch('https://api.imgbb.com/1/upload?key=caa9e987e52508e76795ed3edebc273a', {
-      method: 'POST',
-      body: formData,
-    });
+    try {
+      const response = await fetch('https://api.imgbb.com/1/upload?key=caa9e987e52508e76795ed3edebc273a', {
+        method: 'POST',
+        body: formData,
+      });
 
-    if (!response.ok) {
-      throw new Error('Failed to upload image');
+      console.log('ImgBB response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('ImgBB upload failed:', errorText);
+        throw new Error(`Failed to upload image: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('ImgBB upload successful:', data.data.url);
+      return data.data.url;
+    } catch (error) {
+      console.error('Error uploading to ImgBB:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    return data.data.url;
   };
 
   const analyzeImage = async (imageUrl: string): Promise<AnalysisResult> => {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer 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',
-      },
-      body: JSON.stringify({
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Give calories of each item in this image in this below JSON format only\n {items:[{item_name:name of item, total_calories:in gm, total_protien:in gm , toal_carbs: in gm ,toal_fats:in gm},...]}',
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageUrl,
-                },
-              },
-            ],
-          },
-        ],
-        model: 'llama-3.2-90b-vision-preview',
-        temperature: 1,
-        max_completion_tokens: 1024,
-        top_p: 1,
-        stream: false,
-        response_format: {
-          type: 'json_object',
+    console.log('Starting image analysis with Groq API...', imageUrl);
+    
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer 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',
         },
-        stop: null,
-      }),
-    });
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Give calories of each item in this image in this below JSON format only\n {items:[{item_name:name of item, total_calories:in gm, total_protien:in gm , toal_carbs: in gm ,toal_fats:in gm},...]}',
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: imageUrl,
+                  },
+                },
+              ],
+            },
+          ],
+          model: 'llama-3.2-90b-vision-preview',
+          temperature: 1,
+          max_completion_tokens: 1024,
+          top_p: 1,
+          stream: false,
+          response_format: {
+            type: 'json_object',
+          },
+          stop: null,
+        }),
+      });
 
-    if (!response.ok) {
-      throw new Error('Failed to analyze image');
+      console.log('Groq API response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Groq API failed:', errorText);
+        throw new Error(`Failed to analyze image: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('Groq API response data:', data);
+      
+      const content = data.choices[0].message.content;
+      console.log('Analysis content:', content);
+      
+      const parsedResult = JSON.parse(content);
+      console.log('Parsed analysis result:', parsedResult);
+      
+      return parsedResult;
+    } catch (error) {
+      console.error('Error analyzing image:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    return JSON.parse(content);
   };
 
   const handleFileSelect = async (file: File) => {
     if (!file) return;
 
+    console.log('File selected:', file.name, file.type, file.size);
+
     // Validate file type
     if (!file.type.startsWith('image/')) {
+      console.error('Invalid file type:', file.type);
       toast({
         title: 'Invalid file type',
         description: 'Please select an image file.',
@@ -104,6 +136,7 @@ export function CalorieApp() {
 
     // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
+      console.error('File too large:', file.size);
       toast({
         title: 'File too large',
         description: 'Please select an image smaller than 10MB.',
@@ -113,6 +146,7 @@ export function CalorieApp() {
     }
 
     try {
+      console.log('Starting file processing...');
       setIsLoading(true);
       setUploadProgress(0);
       setAnalysisResult(null);
@@ -120,6 +154,7 @@ export function CalorieApp() {
       // Create preview
       const reader = new FileReader();
       reader.onload = (e) => {
+        console.log('File preview created');
         setSelectedImage(e.target?.result as string);
       };
       reader.readAsDataURL(file);
@@ -136,22 +171,38 @@ export function CalorieApp() {
       }, 200);
 
       // Upload to imgbb
+      console.log('Uploading to ImgBB...');
       const imageUrl = await uploadToImgbb(file);
       setUploadProgress(100);
 
       // Analyze image
+      console.log('Starting analysis...');
       const result = await analyzeImage(imageUrl);
       setAnalysisResult(result);
 
+      console.log('Analysis complete, found', result.items.length, 'items');
       toast({
         title: 'Analysis complete!',
         description: `Found ${result.items.length} food items in your image.`,
       });
     } catch (error) {
       console.error('Error processing image:', error);
+      
+      let errorMessage = 'Failed to analyze the image. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('CORS')) {
+          errorMessage = 'Network error: CORS policy blocked the request. Please try again or use a different image.';
+        } else if (error.message.includes('Failed to upload')) {
+          errorMessage = 'Failed to upload image. Please check your internet connection and try again.';
+        } else if (error.message.includes('Failed to analyze')) {
+          errorMessage = 'Failed to analyze image content. Please try with a clearer image of food.';
+        }
+      }
+      
       toast({
         title: 'Error',
-        description: 'Failed to analyze the image. Please try again.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
