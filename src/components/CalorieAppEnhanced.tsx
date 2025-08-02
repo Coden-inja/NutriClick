@@ -11,9 +11,9 @@ import { HeroSection } from './HeroSection';
 interface FoodItem {
   item_name: string;
   total_calories: number;
-  total_protien: number;
-  toal_carbs: number;
-  toal_fats: number;
+  total_protein: number;
+  total_carbs: number;
+  total_fats: number;
 }
 
 interface AnalysisResult {
@@ -28,72 +28,113 @@ export function CalorieApp() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const analyzeImageSecure = async (imageUrl: string): Promise<AnalysisResult> => {
-    console.log('Starting secure image analysis...', imageUrl);
+  const analyzeImage = async (imageUrl: string): Promise<AnalysisResult> => {
+    console.log('Starting image analysis...', imageUrl);
     
     try {
-      // Call our secure edge function instead of direct API
-      const response = await fetch('/api/analyze-food', {
+      setUploadingState('analyzing');
+      
+      // Validate API key
+      const groqApiKey = import.meta.env.VITE_GROQ_API_KEY;
+      if (!groqApiKey) {
+        throw new Error('GROQ API key is not configured');
+      }
+
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
         },
         body: JSON.stringify({
-          imageUrl: imageUrl,
-        }),
+          messages: [
+            {
+              role: "system",
+              content: "You are a nutritional analysis AI that only responds with valid JSON objects. Never include explanatory text or markdown."
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Analyze this food image and return the nutritional information in JSON. Return ONLY a valid JSON object in this exact format without any additional text or explanation: {\"items\":[{\"item_name\":\"food name\",\"total_calories\":number,\"total_protien\":number,\"toal_carbs\":number,\"toal_fats\":number}]}"
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: imageUrl
+                  }
+                }
+              ]
+            }
+          ],
+          model: "meta-llama/llama-4-scout-17b-16e-instruct",
+          temperature: 0.5,
+          response_format: { "type": "json_object" },
+          max_tokens: 1000,
+          stream: false
+        })
       });
 
-      console.log('Edge function response status:', response.status);
-
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Edge function failed:', errorData);
-        throw new Error(`Analysis failed: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Groq API error response:', errorText);
+        
+        if (response.status === 401) {
+          throw new Error('Invalid API key. Please check your configuration.');
+        } else if (response.status === 429) {
+          throw new Error('Too many requests. Please try again later.');
+        } else {
+          throw new Error(`Analysis failed: ${response.status} ${response.statusText}`);
+        }
       }
 
-      const result = await response.json();
-      console.log('Analysis result:', result);
+      const data = await response.json();
+      console.log('Raw API response:', data);
+      
+      if (!data.choices?.[0]?.message?.content) {
+        throw new Error('Invalid response from Groq API');
+      }
+
+      try {
+        const content = data.choices[0].message.content;
+        console.log('Response content:', content);
+        const result = JSON.parse(content);
+        return result;
+      } catch (parseError) {
+        console.error('Failed to parse API response:', parseError);
+        console.log('Raw content:', content);
+        throw new Error('Invalid JSON response from API');
+      }
+      
+      // Validate the response format
+      if (!result.items || !Array.isArray(result.items)) {
+        throw new Error('Invalid response format from AI');
+      }
+
+      // Store the result in localStorage
+      const storedResults = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+      storedResults.push({
+        timestamp: new Date().toISOString(),
+        imageUrl,
+        result
+      });
+      
+      // Keep only the last 10 results
+      if (storedResults.length > 10) {
+        storedResults.shift();
+      }
+      
+      localStorage.setItem('analysisHistory', JSON.stringify(storedResults));
       
       return result;
     } catch (error) {
       console.error('Error in secure analysis:', error);
-      
-      // Fallback to mock data for demo purposes
-      console.log('Falling back to mock data for demo...');
-      return {
-        items: [
-          {
-            item_name: "Blueberries",
-            total_calories: 84,
-            total_protien: 1.1,
-            toal_carbs: 21.5,
-            toal_fats: 0.3
-          },
-          {
-            item_name: "Carrot Sticks",
-            total_calories: 25,
-            total_protien: 0.5,
-            toal_carbs: 6,
-            toal_fats: 0.1
-          },
-          {
-            item_name: "Whole Grain Bread",
-            total_calories: 120,
-            total_protien: 4,
-            toal_carbs: 20,
-            toal_fats: 2
-          },
-          {
-            item_name: "Oatmeal",
-            total_calories: 150,
-            total_protien: 5,
-            toal_carbs: 27,
-            toal_fats: 3
-          }
-        ]
-      };
+      throw new Error(error instanceof Error ? error.message : 'Failed to analyze image');
     }
   };
+
+  const [uploadingState, setUploadingState] = useState<'idle' | 'uploading' | 'analyzing'>('idle');
 
   const uploadToImgbb = async (file: File): Promise<string> => {
     console.log('Starting image upload to ImgBB...', file.name, file.size);
@@ -101,25 +142,52 @@ export function CalorieApp() {
     formData.append('image', file);
 
     try {
-      const response = await fetch('https://api.imgbb.com/1/upload?key=caa9e987e52508e76795ed3edebc273a', {
+      setUploadingState('uploading');
+      // Convert the image to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            resolve(reader.result.split(',')[1]);
+          } else {
+            reject(new Error('Failed to read file'));
+          }
+        };
+        reader.onerror = () => reject(reader.error);
+      });
+      reader.readAsDataURL(file);
+
+      const base64Image = await base64Promise;
+      const imgbbFormData = new FormData();
+      imgbbFormData.append('image', base64Image);
+
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${import.meta.env.VITE_IMGBB_API_KEY}`, {
         method: 'POST',
-        body: formData,
+        body: imgbbFormData,
+        mode: 'cors',
       });
 
-      console.log('ImgBB response status:', response.status);
+      console.log('Upload response status:', response.status);
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('ImgBB upload failed:', errorText);
         throw new Error(`Failed to upload image: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log('ImgBB upload successful:', data.data.url);
+      if (!data.success) {
+        throw new Error(data.error?.message || 'Failed to upload image');
+      }
+
+      console.log('Upload successful:', data.data.url);
+      setUploadingState('analyzing');
       return data.data.url;
     } catch (error) {
-      console.error('Error uploading to ImgBB:', error);
-      throw error;
+      console.error('Error uploading image:', error);
+      setUploadingState('idle');
+      if (error instanceof Error && error.message.includes('Failed to fetch')) {
+        throw new Error('Network error. Please check your internet connection.');
+      }
+      throw new Error('Failed to upload image. Please try again.');
     }
   };
 
@@ -182,7 +250,7 @@ export function CalorieApp() {
 
       // Analyze image using secure method
       console.log('Starting secure analysis...');
-      const result = await analyzeImageSecure(imageUrl);
+      const result = await analyzeImage(imageUrl);
       setAnalysisResult(result);
 
       console.log('Analysis complete, found', result.items.length, 'items');
@@ -196,14 +264,22 @@ export function CalorieApp() {
       let errorMessage = 'Failed to analyze the image. Please try again.';
       
       if (error instanceof Error) {
-        if (error.message.includes('CORS')) {
-          errorMessage = 'Network error: CORS policy blocked the request. Please try again or use a different image.';
+        if (error.message.includes('network')) {
+          errorMessage = 'Network error. Please check your internet connection.';
         } else if (error.message.includes('Failed to upload')) {
-          errorMessage = 'Failed to upload image. Please check your internet connection and try again.';
+          errorMessage = 'Failed to upload image. Please try again with a different image.';
+        } else if (error.message.includes('API key')) {
+          errorMessage = 'API configuration error. Please contact support.';
+        } else if (error.message.includes('Too many requests')) {
+          errorMessage = 'Service is busy. Please wait a moment and try again.';
+        } else if (error.message.includes('Invalid response')) {
+          errorMessage = 'Failed to analyze the food image. Please try with a clearer image.';
         } else if (error.message.includes('Analysis failed')) {
-          errorMessage = 'Failed to analyze image content. Please try with a clearer image of food.';
+          errorMessage = 'Failed to analyze image. Please try with a clearer food image.';
         }
       }
+      
+      setAnalysisResult(null); // Clear any previous results
       
       toast({
         title: 'Error',
@@ -231,9 +307,9 @@ export function CalorieApp() {
   };
 
   const totalCalories = analysisResult?.items.reduce((sum, item) => sum + item.total_calories, 0) || 0;
-  const totalProtein = analysisResult?.items.reduce((sum, item) => sum + item.total_protien, 0) || 0;
-  const totalCarbs = analysisResult?.items.reduce((sum, item) => sum + item.toal_carbs, 0) || 0;
-  const totalFats = analysisResult?.items.reduce((sum, item) => sum + item.toal_fats, 0) || 0;
+  const totalProtein = analysisResult?.items.reduce((sum, item) => sum + item.total_protein, 0) || 0;
+  const totalCarbs = analysisResult?.items.reduce((sum, item) => sum + item.total_carbs, 0) || 0;
+  const totalFats = analysisResult?.items.reduce((sum, item) => sum + item.total_fats, 0) || 0;
 
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -361,7 +437,11 @@ export function CalorieApp() {
                     <div className="text-center py-8">
                       <CircularProgress progress={uploadProgress} />
                       <p className="text-muted-foreground mt-4">
-                        {uploadProgress < 100 ? 'Uploading image...' : 'Analyzing nutritional content...'}
+                        {uploadingState === 'uploading' 
+                          ? 'Uploading image...' 
+                          : uploadingState === 'analyzing'
+                          ? 'Analyzing nutritional content...'
+                          : 'Processing...'}
                       </p>
                     </div>
                   )}

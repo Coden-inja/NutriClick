@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Camera, Brain, Zap } from 'lucide-react';
+import { Sparkles, Camera, Brain, Zap, CakeSlice } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function HeroSection() {
@@ -19,12 +19,12 @@ export function HeroSection() {
           <div className="flex items-center justify-center gap-4 mb-6 animate-bounce-in">
             <div className="relative">
               <div className="w-16 h-16 bg-gradient-primary rounded-3xl flex items-center justify-center shadow-elevated animate-pulse-glow">
-                <Brain className="w-8 h-8 text-primary-foreground" />
+                <CakeSlice className="w-8 h-8 text-primary-foreground" />
               </div>
               <Sparkles className="w-6 h-6 text-accent-orange absolute -top-2 -right-2 animate-pulse" />
             </div>
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-primary via-accent-orange to-accent-blue bg-clip-text text-transparent animate-gradient-shift bg-[length:200%_auto]">
-              CalorieSnap
+              NutriClick
             </h1>
           </div>
           

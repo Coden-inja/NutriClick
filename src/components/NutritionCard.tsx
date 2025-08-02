@@ -6,9 +6,9 @@ import { Utensils } from 'lucide-react';
 interface FoodItem {
   item_name: string;
   total_calories: number;
-  total_protien: number;
-  toal_carbs: number;
-  toal_fats: number;
+  total_protein: number;
+  total_carbs: number;
+  total_fats: number;
 }
 
 interface NutritionCardProps {
@@ -16,11 +16,11 @@ interface NutritionCardProps {
 }
 
 export function NutritionCard({ item }: NutritionCardProps) {
-  const totalMacros = item.total_protien + item.toal_carbs + item.toal_fats;
+  const totalMacros = item.total_protein + item.total_carbs + item.total_fats;
   
-  const proteinPercentage = totalMacros > 0 ? (item.total_protien / totalMacros) * 100 : 0;
-  const carbsPercentage = totalMacros > 0 ? (item.toal_carbs / totalMacros) * 100 : 0;
-  const fatsPercentage = totalMacros > 0 ? (item.toal_fats / totalMacros) * 100 : 0;
+  const proteinPercentage = totalMacros > 0 ? (item.total_protein / totalMacros) * 100 : 0;
+  const carbsPercentage = totalMacros > 0 ? (item.total_carbs / totalMacros) * 100 : 0;
+  const fatsPercentage = totalMacros > 0 ? (item.total_fats / totalMacros) * 100 : 0;
 
   return (
     <Card className="bg-card border-0 shadow-card hover:shadow-elevated transition-all duration-300 hover:-translate-y-1 group">
@@ -50,7 +50,7 @@ export function NutritionCard({ item }: NutritionCardProps) {
               <span className="text-sm font-medium text-foreground">Protein</span>
             </div>
             <span className="text-sm font-semibold text-nutrition-protein">
-              {item.total_protien.toFixed(1)}g
+              {item.total_protein.toFixed(1)}g
             </span>
           </div>
           <div className="w-full bg-nutrition-protein-light rounded-full h-2">
@@ -67,7 +67,7 @@ export function NutritionCard({ item }: NutritionCardProps) {
               <span className="text-sm font-medium text-foreground">Carbs</span>
             </div>
             <span className="text-sm font-semibold text-nutrition-carbs">
-              {item.toal_carbs.toFixed(1)}g
+              {item.total_carbs.toFixed(1)}g
             </span>
           </div>
           <div className="w-full bg-nutrition-carbs-light rounded-full h-2">
@@ -84,7 +84,7 @@ export function NutritionCard({ item }: NutritionCardProps) {
               <span className="text-sm font-medium text-foreground">Fats</span>
             </div>
             <span className="text-sm font-semibold text-nutrition-fats">
-              {item.toal_fats.toFixed(1)}g
+              {item.total_fats.toFixed(1)}g
             </span>
           </div>
           <div className="w-full bg-nutrition-fats-light rounded-full h-2">
